@@ -1,0 +1,107 @@
+---
+title: "Engagement Test"
+author: "Mitul Shah"
+date: "8/8/2017"
+output: pdf_document
+---
+
+# Loading the data
+
+```{r}
+
+user_table <- read.csv("Engagement_Test/user_table.csv")
+test_table <- read.csv("Engagement_Test/test_table.csv")
+
+```
+
+# Checking Data Quality
+
+```{r}
+
+## Are there any duplicates?
+length(user_table$user_id) == length(unique(user_table$user_id)) ## looks good!
+length(test_table$user_id) == length(unique(test_table$user_id)) ## looks good!
+
+```
+
+
+```{r}
+
+## Merge two datasets
+data <- merge(user_table, test_table, by = "user_id")
+
+## Converting the mode of date columns to date
+data$signup_date <- as.Date(data$signup_date, format = "%Y-%m-%d")
+data$date <- as.Date(data$date, format = "%Y-%m-%d")
+
+```
+
+
+# Overall Impact of the feature: Recommended Friends
+
+```{r}
+
+## Doing a t-test overall 
+t.test(data$pages_visited[data$test == 0], data$pages_visited[data$test == 1])
+
+```
+
+The results show that the test was not significant overall. Moreover, the mean of the test group is also a bit less than the control group. Let's try to see whether this was actually true by investigating into different user segments. 
+
+
+# Impact of the feature across different user segments
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+library(rpart)
+
+## Checking to see whether the split was ~ 50/50 or not across all browser
+table(data$browser, data$test) ## looks good!
+
+## Chrome Users
+t.test(data$pages_visited[data$test == 0 & data$browser == "Chrome"], data$pages_visited[data$test == 1 & data$browser == "Chrome"])
+
+## Safari Users
+t.test(data$pages_visited[data$test == 0 & data$browser == "Safari"], data$pages_visited[data$test == 1 & data$browser == "Safari"])
+
+## Opera Users
+t.test(data$pages_visited[data$test == 0 & data$browser == "Opera"], data$pages_visited[data$test == 1 & data$browser == "Opera"])
+
+## Firebox Users
+t.test(data$pages_visited[data$test == 0 & data$browser == "Firefox"], data$pages_visited[data$test == 1 & data$browser == "Firefox"])
+
+## Internet Explorer Users
+t.test(data$pages_visited[data$test == 0 & data$browser == "IE"], data$pages_visited[data$test == 1 & data$browser == "IE"])
+
+## Subsetting test and control users
+data_test <- filter(data, test == 1)
+data_control <- filter(data, test == 0)
+
+library(data.table)
+
+## Adding a week variable
+data$week <- week(data$signup_date)
+
+## Mean pages visited for control and test by week 
+dat <- subset(data, browser!="Opera") %>% group_by(week, test) %>% summarize(mean_pages_visited = mean(pages_visited))
+
+library(ggplot2)
+
+## Visualizing it!
+ggplot(dat, aes(week, mean_pages_visited, group = test, color = test)) + geom_line()
+
+## Building a tree
+tree = rpart(test ~ ., data = data, control = rpart.control(minbucket = nrow(data)/100, maxdepth = 2))
+tree
+
+```
+
+# Conclusion 
+
+We can clearly see that the conversion rate for the Opera Users in the test group was 0 and they responded differently. There is something wrong with this and it needs to be investigated further to find out the reason behind it. 
+
+If you look at the plot sign-up date vs pages visited for test and control, you will see that the test is performing proportionally better for old users than new users.
+
+The reason of this is novelty effect. You put a new feature on the site and, just because it is new, old users click a lot on it just out of curiosity. But not because the new feature is actually better, it is simply curiosity. Then they don't click on it anymore as they get used to it. Obviously, new users don't show this behavior since for them everything is new.  If you suspect your new feature might be affected by novelty effect, you should compare test and control only for users for which that was the first overall experience on the site (or at least very recent). If that's actually flat while overall test is winning (like here), it is a big warning sign of novelty effect issues. So there is no point in making the change on the site. 
